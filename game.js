@@ -196,10 +196,17 @@ async function isNameTaken(name) {
     return getLocalRanking().some(r => r.name.toLowerCase() === n);
 }
 
+// trava para não salvar 2x se gameOver/victory rodar mais de uma vez
+let rankingSaveLock = false;
+
 async function addToRanking(name, rooms, skinId) {
+    if (rankingSaveLock) return;
+    rankingSaveLock = true;
+
+    const safeId = name.toLowerCase().trim().replace(/[\/.#$\[\]]/g, '_');
     const entry = {
-        name,
-        nameLower: name.toLowerCase(),
+        name: name.trim(),
+        nameLower: name.toLowerCase().trim(),
         rooms,
         skin: skinId,
         date: Date.now()
@@ -207,33 +214,26 @@ async function addToRanking(name, rooms, skinId) {
 
     if (firebaseReady && db) {
         try {
-            // Atualiza se o nome já existe, senão cria
-            const snap = await db.collection('ranking')
-                .where('nameLower', '==', entry.nameLower)
-                .limit(1)
-                .get();
-            if (!snap.empty) {
-                const doc = snap.docs[0];
-                const old = doc.data();
-                // Só atualiza se o novo resultado for melhor
-                if (rooms >= (old.rooms || 0)) {
-                    await doc.ref.set(entry, { merge: true });
-                }
-            } else {
-                await db.collection('ranking').add(entry);
+            // ID fixo = nome → impossível duplicar o mesmo jogador
+            const ref = db.collection('ranking').doc(safeId);
+            const doc = await ref.get();
+            if (!doc.exists) {
+                await ref.set(entry);
             }
             return;
         } catch (e) {
             console.error('Erro ao salvar ranking global:', e);
+            rankingSaveLock = false;
         }
     }
 
-    // Fallback local
+    // Fallback local — só adiciona se o nome ainda não estiver na lista
     let rank = getLocalRanking();
-    rank = rank.filter(r => r.name.toLowerCase() !== entry.nameLower);
-    rank.push(entry);
-    rank.sort((a, b) => b.rooms - a.rooms);
-    saveLocalRanking(rank.slice(0, 50));
+    if (!rank.some(r => r.name.toLowerCase() === entry.nameLower)) {
+        rank.push(entry);
+        rank.sort((a, b) => b.rooms - a.rooms);
+        saveLocalRanking(rank.slice(0, 50));
+    }
 }
 
 // ===================== INIT =====================
@@ -297,7 +297,8 @@ async function confirmSetup() {
     err.classList.add('hidden');
     player.name = name;
     player.skinIndex = skinIndex;
-    document.getElementById('setup').classList.remove('active');
+    rankingSaveLock = false; // nova partida pode salvar de novo
+    document.getElementById('setup').classList.remove('active'); 
     document.getElementById('game').classList.add('active');
     btn.disabled = false;
     generateRoom();
