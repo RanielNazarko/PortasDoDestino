@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Portas do Destino</title>
     <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="tema.css">
+     
     <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Roboto:wght@400;700&display=swap" rel="stylesheet">
 </head>
 <body>
@@ -87,6 +89,7 @@
                 <button id="btn-inventory" class="btn-small">🎒 Inventário</button>
                 <button id="btn-codex" class="btn-small">📖 Coleção</button>
                 <button id="btn-ranking-game" class="btn-small">🏆 Ranking</button>
+                <button id="btn-suicide" class="btn-small btn-danger" title="Desistir da partida">💀 Desistir</button>
             </div>
         </div>
         <div id="game-area">
@@ -128,11 +131,12 @@
         </div>
     </div>
 
-    <!-- RANKING -->
-    <div id="ranking-panel" class="panel hidden">
-        <div class="mc-panel">
+    <!-- RANKING (tela cheia) -->
+    <div id="ranking-panel" class="panel hidden ranking-full">
+        <div class="ranking-screen">
             <h2>🏆 Ranking de Sobreviventes</h2>
-            <div id="ranking-list"></div>
+            <div id="ranking-podium" class="ranking-podium"></div>
+            <div id="ranking-list" class="ranking-grid-4"></div>
             <button id="btn-close-ranking" class="btn-secondary">Fechar</button>
         </div>
     </div>
@@ -208,6 +212,21 @@
         </div>
     </div>
 
+    <!-- SEGUNDA VIDA -->
+    <div id="second-life-modal" class="modal hidden">
+        <div class="modal-content clear-modal">
+            <h2>💫 Segunda Chance!</h2>
+            <p>Responda corretamente para voltar à vida (só 1 vez por partida):</p>
+            <p id="sl-question" class="sl-question"></p>
+            <input type="text" id="sl-answer" maxlength="32" placeholder="Sua resposta..." autocomplete="off">
+            <p id="sl-error" class="error-msg hidden"></p>
+            <div style="margin-top:16px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
+                <button id="btn-sl-submit" class="btn-primary">Responder</button>
+                <button id="btn-sl-giveup" class="btn-secondary">Desistir</button>
+            </div>
+        </div>
+    </div>
+
     <!-- FIM -->
     <div id="end-modal" class="modal hidden">
         <div class="modal-content">
@@ -222,6 +241,7 @@
     <!-- Firebase (ranking global) -->
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
-    <script src="game.js"></script>
+    <script src="script.js"></script>
 </body>
+   
 </html>

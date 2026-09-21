@@ -150,11 +150,12 @@ header h1 {
 
 /* GAME AREA */
 #game-area {
-    height: calc(100vh - 70px); display: flex;
-    justify-content: center; align-items: center; position: relative;
+    height: calc(100vh - 58px); display: flex;
+    justify-content: center; align-items: stretch; position: relative;
+    padding: 8px 12px 12px;
 }
 #room {
-    width: 100%; max-width: 920px; height: 480px;
+    width: 100%; max-width: 1280px; height: 100%; min-height: 520px;
     background: linear-gradient(to bottom, #2c1810 0%, #1a0f0a 100%);
     border-radius: 18px; position: relative;
     border: 4px solid #5a3a22;
@@ -569,8 +570,10 @@ header h1 {
     overflow: hidden; border: 1px solid #555; margin-bottom: 4px;
 }
 .hp-bar { height: 100%; transition: width 0.35s ease; }
-.player-bar { background: linear-gradient(to right, #2ecc71, #27ae60); }
-.boss-bar { background: linear-gradient(to right, #e74c3c, #c0392b); }
+.player-bar, .boss-bar { transition: width 0.35s ease, background 0.35s ease; }
+.hp-bar.hp-green { background: linear-gradient(to right, #2ecc71, #27ae60) !important; }
+.hp-bar.hp-yellow { background: linear-gradient(to right, #f1c40f, #f39c12) !important; }
+.hp-bar.hp-red { background: linear-gradient(to right, #e74c3c, #c0392b) !important; }
 .hp-container span { font-size: 0.8rem; color: #bbb; }
 .battle-center { position: relative; width: 80px; text-align: center; }
 .vs-big {
@@ -668,4 +671,67 @@ header h1 {
     .equip-grid, .items-grid { grid-template-columns: repeat(2, 1fr); }
     .battle-arena-visual { flex-direction: column; gap: 15px; }
     .fighter-sprite { font-size: 3.2rem; }
+}
+
+.btn-danger {
+    background: rgba(180,30,30,0.55) !important;
+    border: 1px solid #e74c3c !important;
+    color: #fff !important;
+}
+.btn-danger:hover { background: rgba(220,40,40,0.8) !important; }
+
+/* Ranking tela cheia + pódio */
+.ranking-full { z-index: 200; }
+.ranking-screen {
+    background: linear-gradient(160deg, #1e2a3a, #0f1a28);
+    border: 3px solid #ffd700; border-radius: 18px;
+    padding: 28px 24px; width: 96%; max-width: 1100px;
+    max-height: 92vh; overflow-y: auto; text-align: center;
+}
+.ranking-screen h2 { color: #ffd700; margin-bottom: 20px; }
+.ranking-podium {
+    display: flex; align-items: flex-end; justify-content: center;
+    gap: 12px; margin: 10px auto 28px; min-height: 220px;
+}
+.podium-place {
+    display: flex; flex-direction: column; align-items: center;
+    width: 150px; padding: 12px 8px; border-radius: 12px 12px 0 0;
+    background: rgba(255,255,255,0.06); border: 2px solid #444;
+}
+.podium-place.first { order: 2; width: 170px; border-color: #ffd700; background: rgba(255,215,0,0.12); min-height: 200px; }
+.podium-place.second { order: 1; border-color: #c0c0c0; min-height: 170px; }
+.podium-place.third { order: 3; border-color: #cd7f32; min-height: 150px; }
+.podium-medal { font-size: 1.6rem; margin-bottom: 6px; }
+.podium-name { font-weight: bold; color: #fff; font-size: 0.95rem; margin-top: 8px; word-break: break-word; }
+.podium-rooms { color: #8cf; font-size: 0.85rem; }
+.ranking-grid-4 {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px 16px;
+    text-align: left; margin: 10px 0 20px;
+}
+.rank-text-row {
+    padding: 6px 10px; background: rgba(255,255,255,0.04);
+    border-radius: 6px; border: 1px solid #333; font-size: 0.85rem;
+}
+.rank-text-row .pos { color: #ffd700; font-weight: bold; margin-right: 6px; }
+.rank-text-row .nm { color: #eee; }
+.rank-text-row .rm { color: #8cf; float: right; }
+.sl-question {
+    font-size: 1.15rem; color: #ffd700; margin: 16px 0;
+    font-weight: bold; line-height: 1.4;
+}
+#sl-answer {
+    width: 100%; max-width: 280px; padding: 12px 16px;
+    font-size: 1.1rem; border-radius: 10px; border: 2px solid #555;
+    background: #111; color: #fff; text-align: center;
+}
+#sl-answer:focus { outline: none; border-color: #ffd700; }
+.clear-modal { backdrop-filter: none !important; }
+.door-label.reveal {
+    font-size: 0.7rem; font-weight: bold; color: #ffd700;
+    text-shadow: 0 0 6px #000;
+}
+@media (max-width: 800px) {
+    .ranking-grid-4 { grid-template-columns: repeat(2, 1fr); }
+    .podium-place { width: 110px; }
+    .podium-place.first { width: 130px; }
 }

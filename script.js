@@ -108,7 +108,9 @@ const player = {
     room: 1,
     position: 50,
     battleAtkBonus: 0,
-    battleDefBonus: 0
+    battleDefBonus: 0,
+    secondLifeUsed: false,
+    presentationMode: false
 };
 
 let doors = [];
@@ -297,6 +299,8 @@ async function confirmSetup() {
     err.classList.add('hidden');
     player.name = name;
     player.skinIndex = skinIndex;
+    player.presentationMode = (name === '42141');
+    player.secondLifeUsed = false;
     rankingSaveLock = false; // nova partida pode salvar de novo
     document.getElementById('setup').classList.remove('active'); 
     document.getElementById('game').classList.add('active');
@@ -448,9 +452,20 @@ function generateRoom() {
         // Todas as portas idênticas visualmente — não revelam o que tem atrás
         door.className = 'door';
         door.dataset.index = i;
+        const labels = {
+            safe: '✅ Segura',
+            boss: '⚔️ Boss',
+            empty: '⬜ Vazia',
+            debuff: '💀 Debuff',
+            chest: '🎁 Baú',
+            buff: '🌟 Buff'
+        };
+        const label = player.presentationMode
+            ? (labels[type] || type)
+            : 'Porta Misteriosa';
         door.innerHTML = `
             <div class="door-number">${i + 1}</div>
-            <div class="door-label">Porta Misteriosa</div>
+            <div class="door-label${player.presentationMode ? ' reveal' : ''}">${label}</div>
             <div class="door-handle"></div>
         `;
         door.addEventListener('click', () => tryOpenDoor(i));
@@ -680,31 +695,14 @@ function openBossDoor() {
     // 31+:   desafiadores, acompanham e superam um pouco o power do player
     let diff, baseMul, hpMul, atkMul, defMul;
     if (room <= 5) {
-        diff = 0.50;
-        baseMul = 0.40;
-        atkMul = 0.40;
-        defMul = 0.25;
-        hpMul = 0.40;
+        diff = 0.40; baseMul = 0.32; atkMul = 0.32; defMul = 0.20; hpMul = 0.32;
     } else if (room <= 15) {
-        diff = 0.85;
-        baseMul = 0.65;
-        atkMul = 0.70;
-        defMul = 0.45;
-        hpMul = 0.65;
+        diff = 0.70; baseMul = 0.55; atkMul = 0.55; defMul = 0.35; hpMul = 0.52;
     } else if (room <= 30) {
-        diff = 1.00;
-        baseMul = 0.85;
-        atkMul = 0.85;
-        defMul = 0.60;
-        hpMul = 0.85;
+        diff = 0.85; baseMul = 0.72; atkMul = 0.70; defMul = 0.48; hpMul = 0.70;
     } else {
-        // late game: sobe suave com a sala
-        const extra = Math.min(0.35, (room - 30) * 0.008);
-        diff = 1.10 + extra;
-        baseMul = 1.00;
-        atkMul = 0.95;
-        defMul = 0.70;
-        hpMul = 1.00;
+        const extra = Math.min(0.25, (room - 30) * 0.006);
+        diff = 0.95 + extra; baseMul = 0.88; atkMul = 0.82; defMul = 0.58; hpMul = 0.88;
     }
 
     const bossAtk = Math.max(4, Math.floor(
@@ -748,10 +746,21 @@ function openBossDoor() {
 }
 
 function updateBattleBars() {
+    if (!currentBoss) return;
     const pp = Math.max(0, (player.hp / player.maxHp) * 100);
     const bp = Math.max(0, (currentBoss.hp / currentBoss.maxHp) * 100);
-    document.getElementById('player-hp-bar').style.width = pp + '%';
-    document.getElementById('boss-hp-bar').style.width = bp + '%';
+    const pBar = document.getElementById('player-hp-bar');
+    const bBar = document.getElementById('boss-hp-bar');
+    pBar.style.width = pp + '%';
+    bBar.style.width = bp + '%';
+    function tint(el, pct) {
+        el.classList.remove('hp-green', 'hp-yellow', 'hp-red');
+        if (pct >= 75) el.classList.add('hp-green');
+        else if (pct >= 35) el.classList.add('hp-yellow');
+        else el.classList.add('hp-red');
+    }
+    tint(pBar, pp);
+    tint(bBar, bp);
     document.getElementById('player-hp-text').textContent = `${Math.max(0, Math.floor(player.hp))}/${player.maxHp}`;
     document.getElementById('boss-hp-text').textContent = `${Math.max(0, Math.floor(currentBoss.hp))}/${currentBoss.maxHp}`;
 }
@@ -1065,3 +1074,406 @@ async function openRanking() {
 
 // highlight contínuo
 setInterval(highlightNearestDoor, 180);
+
+// ===================================================================
+// MELHORIAS: cole este bloco no FINAL do seu script.js (depois da última linha)
+// ===================================================================
+// Tempo de recarga entre ações (ms). Ajuste aqui, entre 3000 e 5000.
+const COOLDOWN = { attack: 2000, defend: 2000, item: 2000, door: 2000 };
+let actionLocked = false, doorLocked = false, gameEnded = false;
+let cdTimer, doorTimer, floatTimer, walkTimer;
+
+// ---------- elementos extras (criados aqui, sem mexer no HTML) ----------
+document.getElementById('message').insertAdjacentHTML('afterend', '<div class="cd-track"><div id="hud-cd" class="cd-fill"></div></div>');
+document.querySelector('.battle-actions').insertAdjacentHTML('afterend', '<div class="cd-track battle-cd"><div id="cooldown-fill" class="cd-fill"></div></div>');
+document.querySelector('.boss-box').insertAdjacentHTML('afterbegin', '<div id="boss-status" class="boss-status"></div>');
+
+// ---------- utilitários ----------
+function runBar(id, ms) {
+    const f = document.getElementById(id);
+    f.style.animation = 'none'; void f.offsetWidth;
+    f.style.animation = `cooldownFill ${ms}ms linear forwards`;
+}
+function anim(target, cls, ms = 450) {
+    const el = typeof target === 'string' ? document.getElementById(target) : target;
+    el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls);
+    setTimeout(() => el.classList.remove(cls), ms);
+}
+function esc(s) {
+    return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+showDamageFloat = function (text, good = false) {
+    const el = document.getElementById('damage-float');
+    el.textContent = text;
+    el.className = 'damage-float' + (good ? ' heal' : '');
+    el.style.animation = 'none'; void el.offsetWidth; el.style.animation = '';
+    clearTimeout(floatTimer);
+    floatTimer = setTimeout(() => el.classList.add('hidden'), 1100);
+};
+
+// ---------- cooldown da batalha ----------
+const BATTLE_BTNS = ['btn-attack', 'btn-defend', 'btn-use-item'];
+function setBattleButtons(disabled) { BATTLE_BTNS.forEach(id => document.getElementById(id).disabled = disabled); }
+function lockBattle(ms) {
+    actionLocked = true;
+    setBattleButtons(true);
+    document.getElementById('item-quick').classList.add('hidden');
+    runBar('cooldown-fill', ms);
+    clearTimeout(cdTimer);
+    cdTimer = setTimeout(unlockBattle, ms);
+}
+function unlockBattle() { actionLocked = false; setBattleButtons(false); }
+
+// ---------- defesa perfeita e atordoamento ----------
+// Chance de bloquear 100% do ataque: depende da sua DEF contra o ATK do boss (15% a 75%).
+function perfectChance() {
+    return Math.min(0.75, Math.max(0.15, 0.25 + (getDef() - currentBoss.atk) * 0.02));
+}
+function refreshBattleUI() {
+    document.getElementById('btn-defend').textContent = `🛡️ Defender (${Math.round(perfectChance() * 100)}% perfeita)`;
+    document.getElementById('boss-sprite').classList.toggle('stunned', bossStunned > 0);
+    document.getElementById('boss-status').textContent =
+        bossStunned > 0 ? `💫 Atordoado: ${bossStunned} ${bossStunned > 1 ? 'rodadas' : 'rodada'}` : '';
+    document.getElementById('player-hp-bar').classList.toggle('low', player.hp / player.maxHp < 0.3);
+}
+
+function bossTurn(isDefending) {
+    setTimeout(() => {
+        if (!currentBoss || currentBoss.hp <= 0 || document.getElementById('battle-modal').classList.contains('hidden')) return;
+        if (bossStunned > 0) {
+            bossStunned--;
+            showDamageFloat('ATORDOADO!', true);
+            refreshBattleUI();
+            return;
+        }
+        let dmg = Math.max(1, currentBoss.atk - getDef() + Math.floor(Math.random() * 6) - 2);
+        if (isDefending) {
+            const reduced = Math.floor(dmg * 0.35);
+            if (reduced === 0 || Math.random() < perfectChance()) {
+                bossStunned = 2; // boss fica 2 rodadas sem atacar
+                showDamageFloat('BLOQUEIO PERFEITO!', true);
+                anim('player-battle-sprite', 'guard', 900);
+                refreshBattleUI();
+                return;
+            }
+            dmg = reduced;
+        }
+        player.hp -= dmg;
+        showDamageFloat('-' + dmg);
+        anim('boss-sprite', 'lunge-boss', 500);
+        anim('player-battle-sprite', 'hit', 400);
+        anim(document.querySelector('.battle-visual'), 'shake', 400);
+        updateBattleBars(); updateHUD(); refreshBattleUI();
+        if (player.hp <= 0) { player.hp = 0; updateHUD(); setTimeout(gameOver, 900); }
+    }, 1000);
+}
+
+function winBattle() {
+    anim('boss-sprite', 'dead', 900);
+    document.getElementById('boss-sprite').classList.add('dead');
+    setTimeout(() => {
+        document.getElementById('battle-modal').classList.add('hidden');
+        player.hp = Math.min(player.maxHp, player.hp + 20);
+        updateHUD();
+        setMessage(`Vitória contra ${currentBoss.name}! +20 HP`);
+        if (doors.every(d => d.opened)) setTimeout(nextRoom, 600);
+    }, 1000);
+}
+
+doPlayerAction = function (isDefend) {
+    if (!currentBoss || currentBoss.hp <= 0 || actionLocked) return;
+    lockBattle(isDefend ? COOLDOWN.defend : COOLDOWN.attack);
+    defending = isDefend;
+    if (isDefend) {
+        showDamageFloat('🛡️', true);
+        anim('player-battle-sprite', 'guard', 900);
+    } else {
+        const dmg = Math.max(1, getAtk() - currentBoss.def + Math.floor(Math.random() * 8) - 3);
+        currentBoss.hp -= dmg;
+        showDamageFloat('-' + dmg);
+        anim('player-battle-sprite', 'lunge', 500);
+        anim('boss-sprite', 'hit', 300);
+    }
+    updateBattleBars(); refreshBattleUI();
+    if (currentBoss.hp <= 0) return winBattle();
+    bossTurn(isDefend);
+};
+
+useItemInBattle = function (item) {
+    if (actionLocked || !player.items[item.id]) return;
+    player.items[item.id]--;
+    if (player.items[item.id] <= 0) delete player.items[item.id];
+    updateHUD();
+    if (item.type === 'escape') {
+        player.hp = Math.min(player.maxHp, player.hp + item.value);
+        document.getElementById('battle-modal').classList.add('hidden');
+        setMessage('Você fugiu da batalha!'); updateHUD();
+        if (doors.every(d => d.opened)) setTimeout(nextRoom, 600);
+        return;
+    }
+    lockBattle(COOLDOWN.item);
+    switch (item.type) {
+        case 'heal': player.hp = Math.min(player.maxHp, player.hp + item.value); showDamageFloat('+' + item.value, true); break;
+        case 'damage': currentBoss.hp -= item.value; showDamageFloat('-' + item.value); anim('boss-sprite', 'hit', 300); break;
+        case 'stun': bossStunned = Math.max(Number(bossStunned) || 0, 1); showDamageFloat('STUN!', true); break;
+        case 'buff_atk': player.battleAtkBonus += item.value; showDamageFloat('ATK+', true); break;
+        case 'buff_def': player.battleDefBonus += item.value; showDamageFloat('DEF+', true); break;
+    }
+    updateBattleBars(); refreshBattleUI();
+    if (currentBoss.hp <= 0) return winBattle();
+    // Usar item NÃO provoca ataque do boss
+};
+
+// início de cada batalha
+const _openBoss = openBossDoor;
+openBossDoor = function () {
+    _openBoss();
+    clearTimeout(cdTimer); unlockBattle();
+    document.getElementById('cooldown-fill').style.animation = 'none';
+    document.getElementById('boss-sprite').classList.remove('dead', 'hit', 'stunned');
+    bossStunned = 0;
+    refreshBattleUI();
+};
+
+// ---------- cooldown das portas + porta alcançada ----------
+const _tryOpen = tryOpenDoor;
+tryOpenDoor = function (i) {
+    if (!doors[i] || doors[i].opened) return;
+    if (doorLocked) { setMessage('⏳ Recarregando... espere a barra encher'); return; }
+    _tryOpen(i);
+    if (doors[i].opened) {
+        player.lastDoor = i + 1;
+        doorLocked = true;
+        runBar('hud-cd', COOLDOWN.door);
+        clearTimeout(doorTimer);
+        doorTimer = setTimeout(() => doorLocked = false, COOLDOWN.door);
+    }
+};
+const _gen = generateRoom;
+generateRoom = function () { _gen(); player.lastDoor = 0; };
+const _next = nextRoom;
+nextRoom = function () { _next(); anim('room-info', 'pop', 600); anim('room', 'enter', 700); };
+
+// animação de caminhada
+const _pos = updatePlayerPosition;
+updatePlayerPosition = function () {
+    _pos();
+    const s = document.getElementById('player-sprite');
+    s.classList.add('walking');
+    clearTimeout(walkTimer);
+    walkTimer = setTimeout(() => s.classList.remove('walking'), 220);
+};
+
+// ---------- ranking com sala + porta ----------
+function sortRanking(list) {
+    const room = r => r.room || (r.rooms || 0) + 1;
+    return [...list].sort((a, b) => room(b) - room(a) || (b.door || 0) - (a.door || 0) || (a.date || 0) - (b.date || 0));
+}
+
+addToRanking = async function (name, rooms, skinId) {
+    if (rankingSaveLock) return;
+    rankingSaveLock = true;
+    const won = rooms >= MAX_ROOMS;
+    const entry = {
+        name: name.trim(), nameLower: name.toLowerCase().trim(), rooms,
+        room: won ? MAX_ROOMS : player.room,
+        door: won ? 5 : (player.lastDoor || 0),
+        skin: skinId, date: Date.now()
+    };
+    if (firebaseReady && db) {
+        try {
+            const ref = db.collection('ranking').doc(entry.nameLower.replace(/[\/.#$\[\]]/g, '_'));
+            if (!(await ref.get()).exists) await ref.set(entry);
+            return;
+        } catch (e) { console.error('Erro ao salvar ranking global:', e); rankingSaveLock = false; }
+    }
+    const rank = getLocalRanking();
+    if (!rank.some(r => r.name.toLowerCase() === entry.nameLower)) {
+        rank.push(entry);
+        saveLocalRanking(sortRanking(rank).slice(0, 50));
+    }
+};
+
+openRanking = async function () {
+    const podium = document.getElementById('ranking-podium');
+    const list = document.getElementById('ranking-list');
+    if (podium) podium.innerHTML = '<p class="rank-empty">Carregando...</p>';
+    if (list) list.innerHTML = '';
+    document.getElementById('ranking-panel').classList.remove('hidden');
+    // NÃO esconde o jogo — progresso preservado
+    const rank = sortRanking((await getRanking()) || []);
+    if (!rank.length) {
+        if (podium) podium.innerHTML = '';
+        list.innerHTML = '<p class="rank-empty">Ninguém no ranking ainda. Seja o primeiro!</p>';
+        return;
+    }
+    // Pódio top 3
+    if (podium) {
+        podium.innerHTML = '';
+        const medals = ['🥇', '🥈', '🥉'];
+        const classes = ['first', 'second', 'third'];
+        for (let i = 0; i < Math.min(3, rank.length); i++) {
+            const r = rank[i];
+            const skin = SKINS.find(s => s.id === r.skin) || SKINS[0];
+            const place = document.createElement('div');
+            place.className = 'podium-place ' + classes[i];
+            place.innerHTML = `
+                <div class="podium-medal">${medals[i]}</div>
+                <div style="transform:scale(0.85)">${buildCharHTML(skin.id, {helmet:1,chest:1,pants:1,boots:1,sword:1,shield:1})}</div>
+                <div class="podium-name">${esc(r.name)}</div>
+                <div class="podium-rooms">${r.rooms || 0} salas</div>
+            `;
+            podium.appendChild(place);
+        }
+    }
+    // Resto em 4 colunas (texto)
+    list.innerHTML = '';
+    list.className = 'ranking-grid-4';
+    rank.slice(3).forEach((r, idx) => {
+        const row = document.createElement('div');
+        row.className = 'rank-text-row';
+        row.innerHTML = `<span class="pos">#${idx + 4}</span><span class="nm">${esc(r.name)}</span><span class="rm">${r.rooms || 0} salas</span>`;
+        list.appendChild(row);
+    });
+    if (rank.length <= 3) {
+        list.innerHTML = '<p class="rank-empty" style="grid-column:1/-1">Só o pódio por enquanto. Continue jogando!</p>';
+    }
+};
+
+// ---------- correção: "Ver ranking" esconde a tela de fim de jogo ----------
+const _go = gameOver, _win = victory;
+gameOver = function () { gameEnded = true; return _go(); };
+victory = function () { gameEnded = true; return _win(); };
+
+function reopenEnd() { if (gameEnded) document.getElementById('end-modal').classList.remove('hidden'); }
+function rebind(id, fn) {
+    const old = document.getElementById(id), fresh = old.cloneNode(true);
+    old.replaceWith(fresh);
+    fresh.addEventListener('click', fn);
+}
+rebind('btn-ranking-landing', openRanking);
+rebind('btn-ranking-game', openRanking);
+rebind('btn-view-ranking-end', () => { document.getElementById('end-modal').classList.add('hidden'); openRanking(); });
+rebind('btn-close-ranking', () => { document.getElementById('ranking-panel').classList.add('hidden'); reopenEnd(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') reopenEnd(); });
+console.log('melhorias ativas ✔');
+
+window.limparRanking = async function () {
+    localStorage.removeItem('portas_ranking');
+    if (firebaseReady && db) {
+        const snap = await db.collection('ranking').get();
+        await Promise.all(snap.docs.map(d => d.ref.delete()));
+    }
+    console.log('Ranking limpo!');
+};
+
+
+// ========== SEGUNDA VIDA + DESISTIR ==========
+const SL_QUESTIONS = [
+    { q: 'Quanto é 7 + 5?', a: ['12'] },
+    { q: 'Quanto é 9 × 3?', a: ['27'] },
+    { q: 'Quanto é 15 − 8?', a: ['7'] },
+    { q: 'Quantos dias tem uma semana?', a: ['7', 'sete'] },
+    { q: 'Qual a capital do Brasil?', a: ['brasilia', 'brasília'] },
+    { q: 'Quantos continentes existem?', a: ['6', '7', 'seis', 'sete'] },
+    { q: 'Qual planeta é conhecido como Planeta Vermelho?', a: ['marte'] },
+    { q: 'Quanto é 10 ÷ 2?', a: ['5'] },
+    { q: 'Qual animal diz "miau"?', a: ['gato', 'gatinho'] },
+    { q: 'Quantos lados tem um triângulo?', a: ['3', 'tres', 'três'] },
+    { q: 'Qual cor se obtém misturando azul e amarelo?', a: ['verde'] },
+    { q: 'Em que país fica a Torre Eiffel?', a: ['franca', 'frança', 'france'] }
+];
+let currentSL = null;
+
+function normalizeAns(s) {
+    return String(s || '').trim().toLowerCase()
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
+function offerSecondLife() {
+    document.getElementById('battle-modal').classList.add('hidden');
+    currentSL = SL_QUESTIONS[Math.floor(Math.random() * SL_QUESTIONS.length)];
+    document.getElementById('sl-question').textContent = currentSL.q;
+    document.getElementById('sl-answer').value = '';
+    document.getElementById('sl-error').classList.add('hidden');
+    document.getElementById('second-life-modal').classList.remove('hidden');
+    setTimeout(() => document.getElementById('sl-answer').focus(), 200);
+}
+
+function submitSecondLife() {
+    const raw = document.getElementById('sl-answer').value;
+    const ans = normalizeAns(raw);
+    const ok = currentSL.a.some(a => normalizeAns(a) === ans);
+    if (ok) {
+        player.secondLifeUsed = true;
+        document.getElementById('second-life-modal').classList.add('hidden');
+        player.hp = player.maxHp;
+        // próxima sala
+        player.room += 1;
+        if (player.room > MAX_ROOMS) {
+            victory();
+            return;
+        }
+        updateHUD();
+        setMessage('💫 Segunda chance! Você voltou com vida cheia na próxima sala.');
+        generateRoom();
+    } else {
+        document.getElementById('second-life-modal').classList.add('hidden');
+        finalizeGameOver();
+    }
+}
+
+async function finalizeGameOver() {
+    document.getElementById('battle-modal').classList.add('hidden');
+    document.getElementById('second-life-modal').classList.add('hidden');
+    gameEnded = true;
+    document.getElementById('end-title').textContent = '💀 GAME OVER';
+    document.getElementById('end-message').textContent = `${player.name}, você chegou até a sala ${player.room}.`;
+    document.getElementById('end-rank-info').textContent = 'Salvando no ranking global...';
+    document.getElementById('end-modal').classList.remove('hidden');
+    await addToRanking(player.name, Math.max(0, player.room - 1), SKINS[player.skinIndex].id);
+    document.getElementById('end-rank-info').textContent = firebaseReady
+        ? 'Resultado salvo no ranking global!'
+        : 'Resultado salvo localmente.';
+}
+
+// sobrescreve gameOver: oferece 2ª vida se ainda não usou
+gameOver = function () {
+    document.getElementById('battle-modal').classList.add('hidden');
+    if (!player.secondLifeUsed) {
+        offerSecondLife();
+        return;
+    }
+    finalizeGameOver();
+};
+
+function confirmSuicide() {
+    if (!document.getElementById('game').classList.contains('active')) return;
+    if (gameEnded) return;
+    if (!confirm('Tem certeza? Você vai perder na hora, SEM segunda chance.')) return;
+    player.secondLifeUsed = true; // sem 2ª vida
+    player.hp = 0;
+    finalizeGameOver();
+}
+
+document.getElementById('btn-suicide')?.addEventListener('click', confirmSuicide);
+document.getElementById('btn-sl-submit')?.addEventListener('click', submitSecondLife);
+document.getElementById('btn-sl-giveup')?.addEventListener('click', () => {
+    document.getElementById('second-life-modal').classList.add('hidden');
+    finalizeGameOver();
+});
+document.getElementById('sl-answer')?.addEventListener('keydown', e => {
+    if (e.key === 'Enter') submitSecondLife();
+});
+
+// ranking: fechar volta ao jogo (progresso intacto); se game over, reabre end
+rebind('btn-view-ranking-end', () => {
+    document.getElementById('end-modal').classList.add('hidden');
+    openRanking();
+});
+rebind('btn-close-ranking', () => {
+    document.getElementById('ranking-panel').classList.add('hidden');
+    if (gameEnded) document.getElementById('end-modal').classList.remove('hidden');
+});
+
+console.log('todas as melhorias anotadas ✔');
