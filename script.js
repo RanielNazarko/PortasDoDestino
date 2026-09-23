@@ -509,6 +509,17 @@ function handleKey(e) {
         if (n !== -1) tryOpenDoor(n);
     } else if (e.key === 'i' || e.key === 'I') openInventory();
 }
+document.getElementById('btn-esquerda').addEventListener('click', () => {
+    player.position = Math.max(8, player.position - 4);
+    updatePlayerPosition();
+    highlightNearestDoor();
+});
+
+document.getElementById('btn-direita').addEventListener('click', () => {
+    player.position = Math.min(92, player.position + 4);
+    updatePlayerPosition();
+    highlightNearestDoor();
+});
 
 function updatePlayerPosition() {
     document.getElementById('player').style.left = player.position + '%';

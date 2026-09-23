@@ -476,7 +476,7 @@ header h1 {
 .potion-gray { background: #90a4ae; }
 
 .door-icon { display: none; }
-.door.chest-door, .door.empty-door { /* removido — todas iguais */ }
+
 
 /* PANELS & MODALS */
 .panel, .modal {
@@ -734,4 +734,24 @@ header h1 {
     .ranking-grid-4 { grid-template-columns: repeat(2, 1fr); }
     .podium-place { width: 110px; }
     .podium-place.first { width: 130px; }
+}
+.controles-mobile {
+    display: none;
+}
+
+@media (max-width: 768px) {
+    .controles-mobile {
+        display: flex;
+        gap: 20px;
+        position: fixed;
+        bottom: 30px;
+        left: 50%;
+        transform: translateX(-50%);
+    }
+
+    .controles-mobile button {
+        width: 70px;
+        height: 70px;
+        font-size: 30px;
+    }
 }
