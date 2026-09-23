@@ -1488,3 +1488,69 @@ rebind('btn-close-ranking', () => {
 });
 
 console.log('todas as melhorias anotadas ✔');
+(function () {
+    const wrap = document.querySelector('.controles-mobile');
+    if (!wrap) return;
+ 
+    // Estilo injetado aqui, para não depender de mexer no seu tema.css.
+    // Esconde os botões por padrão e só mostra com a classe .is-touch,
+    // que o JS abaixo aplica quando detecta um dispositivo com toque de verdade.
+    const style = document.createElement('style');
+    style.textContent = `
+        .controles-mobile { display: none !important; }
+        .controles-mobile.is-touch {
+            display: flex !important;
+            gap: 18px; position: fixed; bottom: 22px; left: 50%;
+            transform: translateX(-50%); z-index: 50;
+        }
+        .controles-mobile.is-touch button {
+            width: 64px; height: 64px; border-radius: 50%; font-size: 1.6rem;
+            background: linear-gradient(180deg, #ffb347cc, #ff5a36cc);
+            border: 2px solid #ffd54a; color: #fff; box-shadow: 0 6px 16px #0007;
+            -webkit-user-select: none; user-select: none; touch-action: none;
+        }
+        .controles-mobile.is-touch button:active { transform: scale(0.9); }
+    `;
+    document.head.appendChild(style);
+ 
+    // Detecta toque de verdade, não só a largura da tela.
+    // Assim, num notebook com tela pequena mas com mouse, os botões continuam escondidos;
+    // e num tablet/celular em paisagem (tela larga), eles aparecem.
+    function isTouchDevice() {
+        return window.matchMedia('(hover: none) and (pointer: coarse)').matches
+            || navigator.maxTouchPoints > 0;
+    }
+    function refreshControls() {
+        wrap.classList.toggle('is-touch', isTouchDevice());
+    }
+    refreshControls();
+    window.addEventListener('resize', refreshControls);
+    window.matchMedia('(pointer: coarse)').addEventListener?.('change', refreshControls);
+ 
+    // Andar contínuo enquanto o botão fica pressionado (igual segurar a seta do teclado)
+    function moveStep(dir) {
+        if (typeof player === 'undefined' || !document.getElementById('game').classList.contains('active')) return;
+        player.position = dir < 0 ? Math.max(8, player.position - 4) : Math.min(92, player.position + 4);
+        updatePlayerPosition();
+        highlightNearestDoor();
+    }
+    function holdButton(btn, dir) {
+        let interval = null;
+        const start = (e) => {
+            e.preventDefault();
+            if (interval) return;
+            moveStep(dir);
+            interval = setInterval(() => moveStep(dir), 160);
+        };
+        const stop = () => { clearInterval(interval); interval = null; };
+        btn.addEventListener('pointerdown', start);
+        btn.addEventListener('pointerup', stop);
+        btn.addEventListener('pointerleave', stop);
+        btn.addEventListener('pointercancel', stop);
+        btn.addEventListener('contextmenu', e => e.preventDefault());
+    }
+    const left = document.getElementById('btn-esquerda');
+    const right = document.getElementById('btn-direita');
+    if (left) holdButton(left, -1);
+    if (right) holdButton(right, 1);
+})();
